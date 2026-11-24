@@ -1,0 +1,11 @@
+server/.venv/
+server/data/
+server/**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+capacitor/node_modules/
+capacitor/android/
+dist/
+node_modules/
+.git/
+.env

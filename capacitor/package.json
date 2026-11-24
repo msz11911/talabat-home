@@ -1,0 +1,16 @@
+{
+  "name": "talabat-home-apk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper for Talabat Home",
+  "scripts": {
+    "add:android": "cap add android",
+    "sync": "cap sync android",
+    "open": "cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}

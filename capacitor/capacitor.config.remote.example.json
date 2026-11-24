@@ -1,0 +1,12 @@
+{
+  "appId": "com.talabathome.app",
+  "appName": "Talabat Home",
+  "webDir": "../web",
+  "server": {
+    "url": "https://your-app.onrender.com",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

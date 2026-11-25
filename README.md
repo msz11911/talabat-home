@@ -57,7 +57,18 @@ cd server
 
 ## 2) النشر على سحابة مجانية
 
-### أ) PythonAnywhere — مجاني 100% وبدون بطاقة (موصى به)
+### أ) Vercel — مجاني وبدون بطاقة (موصى به)
+
+السيرفر الحالي منشور على `https://talabat-home.vercel.app`. لإعادة النشر أو تعديله:
+
+1. افتح https://vercel.com/new وسجّل الدخول بـ GitHub.
+2. استورد مستودع `msz11911/talabat-home` (Framework: **Other**، Root Directory: `.`).
+3. أضف المتغيرات: `DATABASE_URL` (رابط Neon)، `APP_SECRET` (نص ثابت)، `HUSBAND_PIN`، `WIFE_PIN`، و`DATA_DIR=/tmp`.
+4. اضغط **Deploy**. ملفات الواجهة مكرّرة في `public/` و`server/web/` ليتمكن FastAPI من تقديمها على Vercel.
+
+> ملاحظة: قاعدة البيانات على Neon، والجلسات موقّعة بـ `APP_SECRET` ثابت حتى لا تسقط عند إعادة النشر.
+
+### ب) PythonAnywhere — مجاني 100% وبدون بطاقة
 
 لا يحتاج بطاقة بنكية ولا قاعدة بيانات خارجية؛ قاعدة SQLite تُحفظ على قرص الحساب.
 
@@ -81,7 +92,7 @@ cd server
 > عند تحديث الكود على GitHub، نفّذ في Bash:
 > `cd ~/talabat-home && git pull && pa website reload --domain اسمك.pythonanywhere.com`
 
-### ب) Render + Neon (يحتاج بطاقة للتحقق من الهوية)
+### ج) Render + Neon (يحتاج بطاقة للتحقق من الهوية)
 
 1. أنشئ حساباً على [Neon](https://neon.tech) وقاعدة بيانات PostgreSQL مجانية،
    وانسخ رابط الاتصال `DATABASE_URL`.

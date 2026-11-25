@@ -60,7 +60,10 @@ MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(2 * 1024 * 1024)))
 MAX_IMAGE_SIDE = 320
 MAX_ROWS_PER_ORDER = 300
 PIN_MIN_LENGTH = 4
-ROLE_NAMES = {"husband": "الزوج", "wife": "الزوجة"}
+ROLE_NAMES = {
+    "husband": (os.getenv("HUSBAND_DISPLAY_NAME") or "محمد صلاح").strip(),
+    "wife": (os.getenv("WIFE_DISPLAY_NAME") or "مني الدالي").strip(),
+}
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
 
 DEFAULT_GROUPS: list[tuple[str, str]] = [

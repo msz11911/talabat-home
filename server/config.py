@@ -13,10 +13,20 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env", override=False)
 
 ROOT_DIR = BASE_DIR.parent
-WEB_DIR = ROOT_DIR / "web"
-# على Vercel تُخدَم الواجهة من مجلد public عبر CDN، وقد لا يُرفع مجلد web داخل الـ function.
-if not WEB_DIR.exists():
-    WEB_DIR = ROOT_DIR / "public"
+# نبحث عن الواجهة في عدة مواقع حسب طريقة النشر (محلي / Vercel بجذر المشروع أو بجذر server).
+WEB_DIR = next(
+    (
+        p
+        for p in (
+            ROOT_DIR / "web",
+            ROOT_DIR / "public",
+            BASE_DIR / "web",
+            BASE_DIR / "public",
+        )
+        if p.exists()
+    ),
+    ROOT_DIR / "web",
+)
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 

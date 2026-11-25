@@ -14,6 +14,9 @@ load_dotenv(BASE_DIR / ".env", override=False)
 
 ROOT_DIR = BASE_DIR.parent
 WEB_DIR = ROOT_DIR / "web"
+# على Vercel تُخدَم الواجهة من مجلد public عبر CDN، وقد لا يُرفع مجلد web داخل الـ function.
+if not WEB_DIR.exists():
+    WEB_DIR = ROOT_DIR / "public"
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 

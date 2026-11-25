@@ -11,6 +11,11 @@
     savedBase !== null ? savedBase : window.TALABAT_API_BASE || ""
   ).replace(/\/$/, "");
 
+  const ROLE_LABELS = {
+    husband: "محمد صلاح",
+    wife: "مني الدالي",
+  };
+
   const S = {
     token: localStorage.getItem("talabat_token") || "",
     role: localStorage.getItem("talabat_role") || "",
@@ -347,10 +352,10 @@
         </div>
         <div class="top-actions">
           ${S.role === "husband" ? `
-            <span class="role-chip">👨 الزوج</span>
+            <span class="role-chip">👨 ${ROLE_LABELS.husband}</span>
             <button class="bell" data-action="bell" aria-label="الإشعارات">🔔
               <span class="badge" data-unread-badge ${unread ? "" : "hidden"}>${unread > 9 ? "9+" : unread}</span>
-            </button>` : `<span class="role-chip">👩 الزوجة</span>`}
+            </button>` : `<span class="role-chip">👩 ${ROLE_LABELS.wife}</span>`}
         </div>
       </header>`;
   }
@@ -391,16 +396,16 @@
       <div class="login-hero">
         <div class="logo">🛒</div>
         <h1>Talabat Home</h1>
-        <p>قائمة مشتريات البيت، بين الزوج والزوجة</p>
+        <p>قائمة مشتريات البيت، بين محمد صلاح ومني الدالي</p>
       </div>
       <div class="card pad stack">
         <div class="role-picker">
           <button class="role-card ${S.loginRole === "husband" ? "selected" : ""}" data-action="pick-role" data-role="husband">
-            <span class="face">👨</span><span class="name">الزوج</span>
+            <span class="face">👨</span><span class="name">${ROLE_LABELS.husband}</span>
             <span class="desc">إدارة القوائم وتنفيذ الطلبات</span>
           </button>
           <button class="role-card ${S.loginRole === "wife" ? "selected" : ""}" data-action="pick-role" data-role="wife">
-            <span class="face">👩</span><span class="name">الزوجة</span>
+            <span class="face">👩</span><span class="name">${ROLE_LABELS.wife}</span>
             <span class="desc">تجهيز الطلب وإرساله</span>
           </button>
         </div>
@@ -652,7 +657,7 @@
           <div class="small muted">${dateText(S.draft.created_at)}</div>
           <div class="small muted">اكتبي الكمية بجانب كل صنف، وأضيفي أي صنف غير موجود من زر الإضافة أسفل المجموعة.</div>
         </div>
-        ${groups || `<div class="empty"><span class="emoji">🗂️</span>لا توجد مجموعات بعد — اطلب من الزوج إضافتها</div>`}
+        ${groups || `<div class="empty"><span class="emoji">🗂️</span>لا توجد مجموعات بعد — اطلب من محمد صلاح إضافتها</div>`}
         ${customRows}
       </main>
       ${bottomBar(totals.total, "مراجعة الطلب", "review", totals.count)}`;
@@ -699,7 +704,7 @@
         <div class="empty" style="padding:55px 18px">
           <span class="emoji">🎉</span>
           <h2 class="section-title">تم إرسال الطلب #${serial}</h2>
-          <p class="hint">سيظهر عند الزوج مع إشعار بطلب جديد. يمكنك متابعة حالته من «طلباتي».</p>
+          <p class="hint">سيظهر عند محمد صلاح مع إشعار بطلب جديد. يمكنك متابعة حالته من «طلباتي».</p>
         </div>
         <button class="btn btn-primary btn-block" data-action="finish-order">تم</button>
       </main>`;
@@ -741,9 +746,9 @@
         </div>
         ${S.role === "husband" ? `<div class="card pad stack">
           <h3 class="section-title">تغيير رموز الدخول</h3>
-          <div class="field"><label>رمز الزوج الحالي</label><input name="current_pin" type="password" inputmode="numeric" autocomplete="off" /></div>
+          <div class="field"><label>رمز محمد صلاح الحالي</label><input name="current_pin" type="password" inputmode="numeric" autocomplete="off" /></div>
           <div class="field"><label>من تريد تغيير رمزه؟</label>
-            <select name="target_role"><option value="husband">الزوج</option><option value="wife">الزوجة</option></select>
+            <select name="target_role"><option value="husband">${ROLE_LABELS.husband}</option><option value="wife">${ROLE_LABELS.wife}</option></select>
           </div>
           <div class="field"><label>الرمز الجديد (4 أرقام)</label><input name="new_pin" inputmode="numeric" maxlength="8" autocomplete="off" /></div>
           <button class="btn btn-block" data-action="change-pin">تغيير الرمز</button>

@@ -1,3 +1,10 @@
+---
+title: Talabat Home
+emoji: 🛒
+sdk: docker
+app_port: 7860
+---
+
 # Talabat Home 🛒
 
 تطبيق مشتريات بسيط يعمل على موبايلين (الزوج والزوجة) ويتواصل بينهما عبر الإنترنت.

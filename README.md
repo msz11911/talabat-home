@@ -55,7 +55,33 @@ cd server
 
 ---
 
-## 2) النشر على سحابة مجانية (Render + Neon)
+## 2) النشر على سحابة مجانية
+
+### أ) PythonAnywhere — مجاني 100% وبدون بطاقة (موصى به)
+
+لا يحتاج بطاقة بنكية ولا قاعدة بيانات خارجية؛ قاعدة SQLite تُحفظ على قرص الحساب.
+
+1. سجّل في [PythonAnywhere](https://www.pythonanywhere.com/registration/register/beginner/) واختر **Beginner / Create a free account**.
+2. من صفحة **Account** انشئ **API token** (اضغط «Create new API token»).
+3. افتح تبويب **Consoles** وابدأ **Bash**، ثم نفّذ سطراً واحداً:
+   ```bash
+   rm -rf ~/talabat-home && git clone https://github.com/msz11911/talabat-home.git ~/talabat-home && bash ~/talabat-home/scripts/setup-pa.sh
+   ```
+4. يثبّت السكربت الحزم ويُنشئ الموقع تلقائياً. افتح:
+   ```
+   https://اسمك.pythonanywhere.com/api/health
+   ```
+   يجب أن يظهر `{"ok":true,"app":"Talabat Home","version":"1.0.0"}`.
+5. الرمزان الافتراضيان: الزوج `1234` والزوجة `5678`. لتغييرهما عدّل `~/talabat-home/start.sh` ثم أعد تحميل الموقع:
+   ```bash
+   pa website reload --domain اسمك.pythonanywhere.com
+   ```
+
+> ملاحظة: الحساب المجاني يمنح web app واحداً وذاكرة 512MB، وهذا يكفي تماماً للتطبيق.
+> عند تحديث الكود على GitHub، نفّذ في Bash:
+> `cd ~/talabat-home && git pull && pa website reload --domain اسمك.pythonanywhere.com`
+
+### ب) Render + Neon (يحتاج بطاقة للتحقق من الهوية)
 
 1. أنشئ حساباً على [Neon](https://neon.tech) وقاعدة بيانات PostgreSQL مجانية،
    وانسخ رابط الاتصال `DATABASE_URL`.

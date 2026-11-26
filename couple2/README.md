@@ -63,9 +63,12 @@ cd server
 السيرفر الحالي منشور على `https://talabat-home-haitham-walaa.vercel.app`. لإعادة النشر أو تعديله:
 
 1. افتح https://vercel.com/new وسجّل الدخول بـ GitHub.
-2. استورد مستودع `msz11911/talabat-home`، الفرع `couple2-haitham-walaa`، واضبط **Root Directory** على `couple2` (Framework: **Other**).
-3. أضف المتغيرات: `DATABASE_URL` (رابط Neon **جديد منفصل** عن النسخة الأصلية)، `APP_SECRET` (نص ثابت مختلف)، `HUSBAND_PIN=1111`، `WIFE_PIN=2222`، `HUSBAND_DISPLAY_NAME=هيثم سعد`، `WIFE_DISPLAY_NAME=ولاء صلاح`، و`DATA_DIR=/tmp`.
-4. اضغط **Deploy**. ملفات الواجهة مكرّرة في `public/` و`server/web/` ليتمكن FastAPI من تقديمها على Vercel.
+2. استورد مستودع `msz11911/talabat-home`، الفرع `couple2-haitham-walaa`، واضبط:
+   - **Root Directory:** `couple2/server`
+   - **Framework Preset:** `FastAPI`
+   - **Install Command:** `pip install -r requirements.txt`
+3. أضف المتغيرات: `DATABASE_URL` (رابط Neon **جديد منفصل** عن النسخة الأصلية — أُنشئ عبر Vercel Marketplace)، `APP_SECRET` (نص ثابت مختلف)، `HUSBAND_PIN=1111`، `WIFE_PIN=2222`، `HUSBAND_DISPLAY_NAME=هيثم سعد`، `WIFE_DISPLAY_NAME=ولاء صلاح`، و`DATA_DIR=/tmp`.
+4. اضغط **Deploy**. ملفات الواجهة مكرّرة في `server/web/` و`public/` ليتمكن FastAPI من تقديمها على Vercel.
 
 > ملاحظة: قاعدة البيانات على Neon، والجلسات موقّعة بـ `APP_SECRET` ثابت حتى لا تسقط عند إعادة النشر.
 

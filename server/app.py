@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import os
+import re
 import secrets
 from collections import OrderedDict
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import (
@@ -29,13 +32,15 @@ from config import (
     DEFAULT_GROUPS,
     MAX_IMAGE_BYTES,
     MAX_IMAGE_SIDE,
+    MAX_IMPORT_BYTES,
+    MAX_IMPORT_ROWS,
     MAX_ROWS_PER_ORDER,
     PIN_MIN_LENGTH,
     ROLE_NAMES,
     WEB_DIR,
 )
 from db import SessionLocal, get_db, init_db
-from models import Group, Item, Order, OrderRow, Setting, utcnow
+from models import Group, Item, Notification, Order, OrderRow, Setting, utcnow
 from schemas import (
     DeleteOrdersIn,
     GroupIn,
@@ -99,6 +104,7 @@ async def lifespan(_app: FastAPI):
     init_db()
     with SessionLocal() as db:
         seed_defaults(db)
+        seed_notifications(db)
     yield
 
 
@@ -125,6 +131,64 @@ Wife = Annotated[str, Depends(require_wife)]
 
 def iso(value: Any) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def notif_out(note: Notification) -> dict[str, Any]:
+    return {
+        "id": note.id,
+        "role": note.role,
+        "kind": note.kind,
+        "title": note.title,
+        "body": note.body,
+        "order_id": note.order_id,
+        "created_at": iso(note.created_at),
+        "seen": bool(note.seen),
+    }
+
+
+def notify(
+    db: Session,
+    role: str,
+    title: str,
+    body: str,
+    *,
+    kind: str = "",
+    order_id: int | None = None,
+) -> Notification:
+    note = Notification(
+        role=role,
+        kind=kind,
+        title=title[:160],
+        body=body,
+        order_id=order_id,
+        seen=False,
+    )
+    db.add(note)
+    return note
+
+
+def seed_notifications(db: Session) -> None:
+    """ترحيل خفيف: إشعارات للطلبات المرسلة قبل تفعيل صندوق الإشعارات."""
+    existing = set(
+        db.scalars(
+            select(Notification).where(
+                Notification.role == "husband", Notification.kind == "new_order"
+            )
+        ).all()
+    )
+    covered = {note.order_id for note in existing}
+    for order in db.scalars(select(Order).where(Order.status == "submitted")).all():
+        if order.id in covered:
+            continue
+        notify(
+            db,
+            "husband",
+            "طلب جديد 🛒",
+            f"{ROLE_NAMES['wife']} أرسلت الطلب #{order.serial}",
+            kind="new_order",
+            order_id=order.id,
+        )
+    db.commit()
 
 
 def item_out(item: Item) -> dict[str, Any]:
@@ -294,6 +358,208 @@ def catalog(db: DbDep, _role: AnyRole) -> dict[str, Any]:
     return {"groups": [group_out(g) for g in groups]}
 
 
+IMPORT_ALIASES: dict[str, set[str]] = {
+    "group": {"group", "groups", "groupname", "category", "المجموعة", "مجموعة", "القسم", "قسم", "الفئة"},
+    "name": {"name", "item", "items", "itemname", "product", "الصنف", "اسمالصنف", "المنتج", "الصنفالمطلوب"},
+    "price": {"price", "cost", "السعر", "السعرالتقديري"},
+    "order": {"order", "sortorder", "الترتيب", "ترتيب"},
+    "emoji": {"emoji", "symbol", "الرمز"},
+}
+
+
+def normalized_header(value: Any) -> str:
+    return re.sub(r"[\s_\-]+", "", str(value or "").strip().lower())
+
+
+def parse_import_rows(filename: str, raw: bytes) -> list[dict[str, Any]]:
+    """Parse an .xlsx/.csv sheet into normalized group/item rows."""
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".xlsx", ".xlsm"}:
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:
+            raise HTTPException(status_code=500, detail="مكتبة Excel غير مثبتة على السيرفر") from exc
+        try:
+            workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+            sheet = workbook.active
+            table = [[cell for cell in row] for row in sheet.iter_rows(values_only=True)]
+            workbook.close()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="تعذّر قراءة ملف Excel") from exc
+    elif suffix == ".csv":
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("cp1256", errors="replace")
+        table = [row for row in csv.reader(io.StringIO(text))]
+    else:
+        raise HTTPException(status_code=415, detail="ارفع ملف Excel بصيغة xlsx أو csv")
+
+    if not table:
+        raise HTTPException(status_code=400, detail="الملف فارغ")
+
+    columns: dict[str, int] = {}
+    first = [normalized_header(cell) for cell in table[0]]
+    header_found = any(
+        value in IMPORT_ALIASES["group"] or value in IMPORT_ALIASES["name"] for value in first
+    )
+    if header_found:
+        for key, aliases in IMPORT_ALIASES.items():
+            for index, value in enumerate(first):
+                if value in aliases:
+                    columns[key] = index
+                    break
+        table = table[1:]
+    else:
+        columns = {"group": 0, "name": 1, "price": 2, "order": 3, "emoji": 4}
+
+    if "group" not in columns or "name" not in columns:
+        raise HTTPException(
+            status_code=400,
+            detail="الملف يجب أن يحتوي على عمود للمجموعة وعمود للصنف",
+        )
+
+    def cell(row: list[Any], key: str) -> Any:
+        index = columns.get(key)
+        return row[index] if index is not None and index < len(row) else None
+
+    def number(value: Any) -> float | None:
+        if value is None or str(value).strip() == "":
+            return None
+        try:
+            return float(str(value).replace("٫", ".").replace(",", "."))
+        except ValueError:
+            return None
+
+    entries: list[dict[str, Any]] = []
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for row_number, row in enumerate(table, start=2 if header_found else 1):
+        if not any(str(value or "").strip() for value in row):
+            continue
+        if len(entries) + len(errors) >= MAX_IMPORT_ROWS:
+            errors.append(f"عدد الصفوف أكبر من {MAX_IMPORT_ROWS}")
+            break
+        group_name = str(cell(row, "group") or "").strip()
+        item_name = str(cell(row, "name") or "").strip()
+        if not group_name or not item_name:
+            errors.append(f"صف {row_number}: اسم المجموعة والصنف مطلوبان")
+            continue
+        if len(group_name) > 120 or len(item_name) > 160:
+            errors.append(f"صف {row_number}: الاسم طويل جداً")
+            continue
+        key = (group_name, item_name)
+        if key in seen:
+            errors.append(f"صف {row_number}: الصنف مكرر ({item_name})")
+            continue
+        seen.add(key)
+        price = number(cell(row, "price")) or 0.0
+        if price < 0 or price > 1_000_000:
+            errors.append(f"صف {row_number}: السعر غير صالح")
+            continue
+        order_value = number(cell(row, "order"))
+        sort_order = int(order_value) if order_value is not None and order_value >= 0 else None
+        entries.append(
+            {
+                "group": group_name,
+                "name": item_name,
+                "price": round(price, 2),
+                "order": sort_order,
+                "emoji": str(cell(row, "emoji") or "🛒").strip()[:16] or "🛒",
+            }
+        )
+
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail="أخطاء في الملف: " + "؛ ".join(errors[:8]),
+        )
+    if not entries:
+        raise HTTPException(status_code=400, detail="لم يتم العثور على أصناف في الملف")
+    return entries
+
+
+@app.post("/api/catalog/import")
+async def import_catalog(
+    file: Annotated[UploadFile, File()],
+    db: DbDep,
+    _role: Husband,
+    mode: str = Query(default="append"),
+) -> dict[str, Any]:
+    """استيراد مجموعات وأصناف من Excel مع الحفاظ على ترتيب الصفوف."""
+    if mode not in {"append", "replace"}:
+        raise HTTPException(status_code=400, detail="وضع الاستيراد غير صالح")
+    raw = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="حجم الملف أكبر من 5 ميجابايت")
+    entries = parse_import_rows(file.filename or "", raw)
+
+    groups = list(db.scalars(select(Group).order_by(Group.sort_order, Group.id)).all())
+    if mode == "replace":
+        for group in groups:
+            db.delete(group)
+        db.flush()
+        groups = []
+
+    groups_by_name = {group.name.strip(): group for group in groups}
+    group_order: dict[str, int] = {}
+    group_emoji: dict[str, str] = {}
+    for entry in entries:
+        group_order.setdefault(entry["group"], len(group_order))
+        group_emoji.setdefault(entry["group"], entry["emoji"])
+
+    groups_created = 0
+    for name, position in group_order.items():
+        if name in groups_by_name:
+            continue
+        group = Group(
+            name=name,
+            emoji=group_emoji[name],
+            sort_order=len(groups_by_name),
+        )
+        db.add(group)
+        groups_by_name[name] = group
+        groups_created += 1
+    db.flush()
+
+    items_created = 0
+    for name, position in group_order.items():
+        group = groups_by_name[name]
+        highest = -1 if mode == "replace" else (
+            db.scalar(select(func.max(Item.sort_order)).where(Item.group_id == group.id)) or -1
+        )
+        next_order = highest + 1
+        for entry in (row for row in entries if row["group"] == name):
+            sort_order = entry["order"] if entry["order"] is not None else next_order
+            db.add(
+                Item(
+                    group_id=group.id,
+                    name=entry["name"],
+                    price=entry["price"],
+                    sort_order=sort_order,
+                )
+            )
+            items_created += 1
+            next_order = max(next_order, sort_order + 1)
+
+    notify(
+        db,
+        "wife",
+        "تحديث القائمة 🗂️",
+        f"{ROLE_NAMES['husband']} حدّث القائمة: {groups_created} مجموعة و{items_created} صنفاً",
+        kind="catalog_import",
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "mode": mode,
+        "groups_created": groups_created,
+        "items_created": items_created,
+        "groups": len(group_order),
+        "rows": len(entries),
+    }
+
+
 @app.post("/api/groups", status_code=201)
 def create_group(payload: GroupIn, db: DbDep, _role: Husband) -> dict[str, Any]:
     group = Group(name=payload.name.strip(), emoji=payload.emoji or "🛒", sort_order=payload.sort_order)
@@ -334,6 +600,13 @@ def create_item(payload: ItemIn, db: DbDep, _role: Husband) -> dict[str, Any]:
         sort_order=payload.sort_order,
     )
     db.add(item)
+    notify(
+        db,
+        "wife",
+        "تحديث القائمة 🗂️",
+        f"{ROLE_NAMES['husband']} أضاف الصنف: {item.name.strip()}",
+        kind="catalog_item",
+    )
     db.commit()
     db.refresh(item)
     return item_out(item)
@@ -514,6 +787,14 @@ def submit_order(order_id: int, db: DbDep, _role: Wife) -> dict[str, Any]:
     order.status = "submitted"
     order.submitted_at = utcnow()
     order.seen_by_husband = False
+    notify(
+        db,
+        "husband",
+        "طلب جديد 🛒",
+        f"{ROLE_NAMES['wife']} أرسلت الطلب #{order.serial} بـ {len(order.rows)} أصناف",
+        kind="new_order",
+        order_id=order.id,
+    )
     db.commit()
     return order_out(db, order)
 
@@ -556,6 +837,22 @@ def close_order(order_id: int, db: DbDep, _role: Husband) -> dict[str, Any]:
     order.status = "closed"
     order.closed_at = utcnow()
     order.seen_by_husband = True
+    for note in db.scalars(
+        select(Notification).where(
+            Notification.role == "husband",
+            Notification.kind == "new_order",
+            Notification.order_id == order.id,
+        )
+    ).all():
+        note.seen = True
+    notify(
+        db,
+        "wife",
+        "تم إغلاق الطلب ✅",
+        f"{ROLE_NAMES['husband']} أغلق الطلب #{order.serial}. تم شراء {detail['summary']['purchased_count']} من {detail['summary']['item_count']}",
+        kind="order_closed",
+        order_id=order.id,
+    )
     db.commit()
     return {
         "serial": order.serial,
@@ -579,33 +876,69 @@ def delete_orders(payload: DeleteOrdersIn, db: DbDep, _role: Husband) -> dict[st
 
 
 @app.get("/api/notifications")
-def notifications(db: DbDep, _role: Husband) -> dict[str, Any]:
+def notifications(db: DbDep, role: AnyRole) -> dict[str, Any]:
+    """صندوق إشعارات مشترك: الزوج يستقبل الطلبات والزوجة تحديثاتها."""
     unread = db.scalar(
-        select(func.count()).select_from(Order).where(
-            Order.status == "submitted", Order.seen_by_husband.is_(False)
+        select(func.count()).select_from(Notification).where(
+            Notification.role == role, Notification.seen.is_(False)
         )
     )
-    latest = db.scalar(
-        select(Order)
-        .where(Order.status == "submitted")
-        .order_by(Order.serial.desc())
-        .limit(1)
-    )
+    recent = db.scalars(
+        select(Notification)
+        .where(Notification.role == role)
+        .order_by(Notification.id.desc())
+        .limit(20)
+    ).all()
+    items = [notif_out(note) for note in recent]
+
+    # توافق مع الواجهة القديمة: أحدث طلب مرسل للزوج.
+    latest_order = None
+    if role == "husband":
+        latest_order = db.scalar(
+            select(Order)
+            .where(Order.status == "submitted")
+            .order_by(Order.serial.desc())
+            .limit(1)
+        )
+    latest = items[0] if items else None
+    if latest_order and (not latest or not latest.get("order_id")):
+        latest = {
+            "id": latest_order.id,
+            "order_id": latest_order.id,
+            "serial": latest_order.serial,
+            "title": "طلب جديد 🛒",
+            "body": f"طلب جديد رقم #{latest_order.serial}",
+            "created_at": None,
+            "seen": False,
+        }
     return {
         "unread": int(unread or 0),
-        "latest": {"id": latest.id, "serial": latest.serial} if latest else None,
+        "latest": latest,
+        "items": items,
     }
 
 
 @app.post("/api/notifications/seen")
-def mark_notifications_seen(db: DbDep, _role: Husband) -> dict[str, Any]:
-    orders = db.scalars(
-        select(Order).where(Order.status == "submitted", Order.seen_by_husband.is_(False))
+def mark_notifications_seen(db: DbDep, role: AnyRole) -> dict[str, Any]:
+    notes = db.scalars(
+        select(Notification).where(
+            Notification.role == role, Notification.seen.is_(False)
+        )
     ).all()
-    for order in orders:
-        order.seen_by_husband = True
+    for note in notes:
+        note.seen = True
+    if role == "husband":
+        orders = db.scalars(
+            select(Order).where(
+                Order.status == "submitted", Order.seen_by_husband.is_(False)
+            )
+        ).all()
+        for order in orders:
+            order.seen_by_husband = True
+    else:
+        orders = []
     db.commit()
-    return {"ok": True, "marked": len(orders)}
+    return {"ok": True, "marked": len(notes) + len(orders)}
 
 
 if WEB_DIR.exists():

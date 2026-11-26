@@ -1,7 +1,10 @@
 /* Service Worker: يحفظ واجهة التطبيق للفتح السريع والعمل بدون اتصال.
    البيانات والصور تحتاج اتصالاً بالسيرفر. */
-const CACHE = "talabat-home-v7";
-const SHELL = ["./", "index.html", "styles.css", "config.js", "app.js", "manifest.webmanifest"];
+const CACHE = "talabat-home-v8";
+const SHELL = [
+  "./", "index.html", "styles.css", "config.js", "app.js",
+  "manifest.webmanifest", "talabat_chime.wav",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

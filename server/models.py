@@ -97,3 +97,18 @@ class OrderRow(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     order: Mapped[Order] = relationship(back_populates="rows")
     item: Mapped[Optional[Item]] = relationship("Item", lazy="joined")
+
+
+class Notification(Base):
+    """إشعار داخل التطبيق يُعرض أيضاً على شاشة الهاتف عبر Capacitor."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    seen: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

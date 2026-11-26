@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+from openpyxl import Workbook
 from PIL import Image
 from fastapi.testclient import TestClient
 
@@ -18,6 +19,17 @@ def png_bytes() -> bytes:
     image = Image.new("RGBA", (200, 200), (255, 0, 0, 0))
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def xlsx_bytes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["المجموعة", "الصنف", "السعر", "الترتيب"])
+    sheet.append(["مجموعة ملف", "حليب", 12.5, 0])
+    sheet.append(["مجموعة ملف", "جبنة", 20, 1])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
     return buffer.getvalue()
 
 
@@ -60,6 +72,26 @@ def test_full_flow(client: TestClient) -> None:
     assert image_response.status_code == 200
     assert image_response.headers["content-type"] == "image/png"
 
+    # استيراد Excel (الزوج فقط) مع الحفاظ على الترتيب
+    assert client.post(
+        "/api/catalog/import",
+        files={"file": ("catalog.xlsx", xlsx_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=wife,
+    ).status_code == 403
+    imported = client.post(
+        "/api/catalog/import",
+        files={"file": ("catalog.xlsx", xlsx_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=husband,
+    )
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["groups_created"] == 1
+    assert imported.json()["items_created"] == 2
+    imported_group = next(
+        group for group in client.get("/api/catalog", headers=wife).json()["groups"]
+        if group["name"] == "مجموعة ملف"
+    )
+    assert [row["name"] for row in imported_group["items"]] == ["حليب", "جبنة"]
+
     # الزوجة تفتح طلباً وتضيف أصنافاً (من القائمة + صنف مطلوب)
     order = client.post("/api/orders", headers=wife).json()
     assert order["serial"] == 1
@@ -70,7 +102,7 @@ def test_full_flow(client: TestClient) -> None:
         json={
             "rows": [
                 {"item_id": item["id"], "quantity": 2, "estimated_price": 7.5},
-                {"name": "زعتر مجفف", "quantity": 1, "estimated_price": 12, "is_custom": True},
+                {"name": "زعتر مجفف", "quantity": 1, "estimated_price": 12, "is_custom": True, "note": "بدون ملح"},
             ]
         },
         headers=wife,
@@ -85,12 +117,14 @@ def test_full_flow(client: TestClient) -> None:
     # إشعار الزوج
     notes = client.get("/api/notifications", headers=husband).json()
     assert notes["unread"] == 1
-    assert notes["latest"]["id"] == order["id"]
+    assert notes["latest"]["order_id"] == order["id"]
+    assert client.get("/api/notifications", headers=wife).json()["unread"] >= 2
 
     detail = client.get(f"/api/orders/{order['id']}", headers=husband).json()
     assert detail["groups"][0]["name"] == "مجموعة اختبار"
     rows = detail["groups"][0]["rows"] + detail["custom_rows"]
     assert len(rows) == 2
+    assert next(row for row in rows if row["is_custom"])["note"] == "بدون ملح"
 
     # الزوج يحدد صنفاً كمشترى ويغلق الطلب
     client.patch(
@@ -104,6 +138,11 @@ def test_full_flow(client: TestClient) -> None:
     assert len(report["purchased"]) == 1
     assert len(report["not_purchased"]) == 1
     assert client.get("/api/notifications", headers=husband).json()["unread"] == 0
+    wife_notes = client.get("/api/notifications", headers=wife).json()
+    assert wife_notes["latest"]["kind"] == "order_closed"
+    assert wife_notes["unread"] >= 1
+    assert client.post("/api/notifications/seen", headers=wife).json()["ok"] is True
+    assert client.get("/api/notifications", headers=wife).json()["unread"] == 0
 
     # تغيير رمز الزوجة
     changed = client.post(

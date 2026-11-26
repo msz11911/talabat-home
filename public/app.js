@@ -24,7 +24,8 @@
     loginRole: "husband",
     catalog: [],
     orders: [],
-    notifications: { unread: 0, latest: null },
+    notifications: { unread: 0, latest: null, items: [] },
+    lastNotificationId: 0,
     openGroups: new Set([1, "d1"]),
     selectedOrders: new Set(),
     draft: null,
@@ -125,22 +126,78 @@
 
   function beep() {
     try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
-      osc.onended = () => ctx.close();
+      const audio = new Audio("talabat_chime.wav");
+      audio.volume = 0.9;
+      audio.play().catch(() => {});
     } catch (_) {
       /* الإشعار الصوتي اختياري */
+    }
+  }
+
+  const localNotifications = () => window.Capacitor?.Plugins?.LocalNotifications || null;
+
+  async function prepareNotifications() {
+    const ln = localNotifications();
+    if (ln) {
+      try {
+        let status = await ln.checkPermissions();
+        if (status.display !== "granted") status = await ln.requestPermissions();
+        if (status.display === "granted") {
+          await ln.createChannel({
+            id: "talabat_alerts",
+            name: "تنبيهات Talabat Home",
+            description: "طلبات الشراء وتحديثات القائمة",
+            sound: "talabat_chime.wav",
+            importance: 4,
+            visibility: 1,
+            vibration: true,
+          });
+        }
+      } catch (error) {
+        console.warn("notification setup:", error);
+      }
+      return;
+    }
+    if ("Notification" in window && Notification.permission === "default") {
+      try {
+        await Notification.requestPermission();
+      } catch (_) {
+        /* المتصفح لا يدعم الإشعارات */
+      }
+    }
+  }
+
+  async function deviceNotify(title, body) {
+    const ln = localNotifications();
+    if (ln) {
+      try {
+        const status = await ln.checkPermissions();
+        if (status.display !== "granted") return;
+        await ln.schedule({
+          notifications: [
+            {
+              id: Math.floor(Date.now() % 2147483647),
+              title,
+              body,
+              sound: "talabat_chime.wav",
+              channelId: "talabat_alerts",
+              autoCancel: true,
+              schedule: { at: new Date(Date.now() + 250) },
+            },
+          ],
+        });
+        return;
+      } catch (error) {
+        console.warn("notification schedule:", error);
+      }
+    }
+    beep();
+    if ("Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification(title, { body, icon: "icons/icon-192.png" });
+      } catch (_) {
+        /* إشعار المتصفح اختياري */
+      }
     }
   }
 
@@ -187,15 +244,13 @@
 
   async function refreshData() {
     const tasks = [api("/api/catalog").then((r) => (S.catalog = r.groups))];
-    if (S.role === "husband") {
-      tasks.push(api("/api/orders").then((r) => (S.orders = r.orders)));
-      tasks.push(api("/api/notifications").then((r) => {
-        S.notifications = r;
-        lastUnread = r.unread;
-      }));
-    } else if (S.role === "wife") {
-      tasks.push(api("/api/orders").then((r) => (S.orders = r.orders)));
-    }
+    tasks.push(api("/api/orders").then((r) => (S.orders = r.orders)));
+    tasks.push(api("/api/notifications").then((r) => {
+      S.notifications = r;
+      lastUnread = r.unread;
+      const newest = Math.max(0, ...(r.items || []).map((item) => item.id));
+      S.lastNotificationId = Math.max(S.lastNotificationId, newest);
+    }));
     await Promise.allSettled(tasks);
   }
 
@@ -231,8 +286,8 @@
 
   function startPolling() {
     stopPolling();
-    if (S.role !== "husband") return;
-    pollTimer = setInterval(poll, 12000);
+    if (!S.token || (S.role !== "husband" && S.role !== "wife")) return;
+    pollTimer = setInterval(poll, 10000);
   }
 
   function stopPolling() {
@@ -241,24 +296,47 @@
   }
 
   async function poll() {
-    if (S.role !== "husband" || !S.token || S.screen !== "home") return;
+    if (!S.token || S.screen !== "home") return;
     try {
       const info = await api("/api/notifications");
-      const increased = info.unread > lastUnread && lastUnread >= 0 && info.unread > 0;
+      const items = info.items || [];
+      const fresh = items.filter((item) => item.id > S.lastNotificationId).sort((a, b) => a.id - b.id);
+      const previousUnread = lastUnread;
       S.notifications = info;
-      if (increased && info.latest) {
-        beep();
-        toast(`طلب جديد رقم #${info.latest.serial}`, "success");
-      }
       lastUnread = info.unread;
+
+      if (fresh.length) {
+        S.lastNotificationId = Math.max(S.lastNotificationId, ...fresh.map((item) => item.id));
+        for (const item of fresh) {
+          deviceNotify(item.title, item.body);
+          toast(item.title, "success");
+        }
+      } else if (info.unread > previousUnread && info.latest) {
+        deviceNotify(info.latest.title || "إشعار جديد", info.latest.body || "");
+      }
       updateBadgeDom();
-      if (S.tab === "orders") {
+
+      const listTab = S.role === "husband" ? "orders" : "mine";
+      if (S.tab === listTab || (S.role === "wife" && S.tab === "new")) {
         S.orders = (await api("/api/orders")).orders;
         render();
       }
     } catch (_) {
       /* المحاولة القادمة */
     }
+  }
+
+  async function markNotificationsSeen() {
+    const info = await api("/api/notifications");
+    S.notifications = info;
+    S.notifications.unread = 0;
+    lastUnread = 0;
+    S.lastNotificationId = Math.max(
+      S.lastNotificationId,
+      ...(info.items || []).map((item) => item.id),
+    );
+    await api("/api/notifications/seen", { method: "POST" });
+    updateBadgeDom();
   }
 
   function updateBadgeDom() {
@@ -351,11 +429,10 @@
           </div>
         </div>
         <div class="top-actions">
-          ${S.role === "husband" ? `
-            <span class="role-chip">👨 ${ROLE_LABELS.husband}</span>
-            <button class="bell" data-action="bell" aria-label="الإشعارات">🔔
-              <span class="badge" data-unread-badge ${unread ? "" : "hidden"}>${unread > 9 ? "9+" : unread}</span>
-            </button>` : `<span class="role-chip">👩 ${ROLE_LABELS.wife}</span>`}
+          <span class="role-chip">${S.role === "husband" ? "👨" : "👩"} ${ROLE_LABELS[S.role] || ""}</span>
+          <button class="bell" data-action="bell" aria-label="الإشعارات">🔔
+            <span class="badge" data-unread-badge ${unread ? "" : "hidden"}>${unread > 9 ? "9+" : unread}</span>
+          </button>
         </div>
       </header>`;
   }
@@ -463,6 +540,7 @@
     return `${topbar()}${tabs("catalog")}
       <main class="page">
         <button class="btn btn-primary btn-block" data-action="add-group">＋ إضافة مجموعة جديدة</button>
+        <button class="btn btn-ghost btn-block" data-action="import-excel">📥 استيراد من Excel</button>
         ${groups || `<div class="empty"><span class="emoji">🗂️</span>لا توجد مجموعات بعد</div>`}
       </main>`;
   }
@@ -608,14 +686,19 @@
       const open = S.openGroups.has(`d${group.id}`);
       const items = group.items.map((item) => {
         const row = S.draft.rows.find((r) => r.item_id === item.id);
+        const key = row ? row.key : `i${item.id}`;
         return `<div class="item-row">
           ${thumb({ ...item, emoji: group.emoji })}
           <div class="grow">
             <div class="item-name elide">${esc(item.name)}</div>
             <div class="item-price">السعر التقديري: ${money(item.price)}</div>
+            <input type="text" class="note-input" data-input="note" data-key="${key}"
+              data-item="${item.id}" data-name="${esc(item.name)}" data-price="${item.price}"
+              value="${esc(row?.note || "")}" placeholder="ملاحظة للزوج (اختياري)" maxlength="500"
+              aria-label="ملاحظة ${esc(item.name)}" />
           </div>
           <input type="number" class="qty" min="0" step="1" inputmode="numeric" placeholder="0"
-            value="${row ? row.quantity : ""}" data-input="qty" data-key="${row ? row.key : `i${item.id}`}"
+            value="${row ? row.quantity : ""}" data-input="qty" data-key="${key}"
             data-item="${item.id}" data-name="${esc(item.name)}" data-price="${item.price}" aria-label="كمية ${esc(item.name)}" />
         </div>`;
       }).join("");
@@ -635,6 +718,7 @@
               <input name="name" placeholder="اسم الصنف" maxlength="160" />
               <input name="qty" type="number" min="1" step="1" value="1" placeholder="كمية" />
               <input name="price" type="number" min="0" step="0.5" value="0" placeholder="السعر" />
+              <input name="note" class="wide" maxlength="500" placeholder="ملاحظة للزوج (اختياري)" />
             </div>
             <button class="btn btn-primary btn-sm" data-action="add-custom" data-id="${group.id}">إضافة</button>
           </div>` : ""}` : ""}
@@ -645,7 +729,8 @@
       <div class="card pad">
         <strong>✨ إضافات مطلوبة</strong>
         ${g.rows.map((r) => `<div class="item-row" style="margin-top:8px">
-          <div class="grow"><div class="item-name">${esc(r.name)}</div><div class="item-price">${money(r.price)} × ${r.row.quantity}</div></div>
+          <div class="grow"><div class="item-name">${esc(r.name)}</div><div class="item-price">${money(r.price)} × ${r.row.quantity}</div>
+            ${r.row.note ? `<div class="small muted">📝 ${esc(r.row.note)}</div>` : ""}</div>
           <button class="remove-row" data-action="remove-draft-row" data-key="${r.row.key}">✕</button>
         </div>`).join("")}
       </div>`).join("");
@@ -655,7 +740,7 @@
         <div class="detail-head">
           <div class="between"><h2 class="section-title">طلب #${S.draft.serial}</h2><button class="btn btn-danger btn-sm" data-action="cancel-draft">إلغاء</button></div>
           <div class="small muted">${dateText(S.draft.created_at)}</div>
-          <div class="small muted">اكتبي الكمية بجانب كل صنف، وأضيفي أي صنف غير موجود من زر الإضافة أسفل المجموعة.</div>
+          <div class="small muted">اكتبي الكمية بجانب كل صنف، ويمكنك كتابة ملاحظة أسفل الصنف (مثلاً: بدون بصل). أضيفي أي صنف غير موجود من زر الإضافة أسفل المجموعة.</div>
         </div>
         ${groups || `<div class="empty"><span class="emoji">🗂️</span>لا توجد مجموعات بعد — اطلب من محمد صلاح إضافتها</div>`}
         ${customRows}
@@ -673,7 +758,8 @@
         ${rows.map((r) => `<div class="item-row">
           ${thumb({ ...r.item, name: r.name, emoji: section.group.emoji }, true)}
           <div class="grow"><div class="item-name">${esc(r.name)}</div>
-            <div class="item-price">${r.row.quantity} × ${money(r.price)}</div></div>
+            <div class="item-price">${r.row.quantity} × ${money(r.price)}</div>
+            ${r.row.note ? `<div class="small muted">📝 ${esc(r.row.note)}</div>` : ""}</div>
           <div class="line-total">${money(r.row.quantity * r.price)}</div>
         </div>`).join("")}
       </div>`;
@@ -808,6 +894,7 @@
 
         case "login": {
           const pin = app.querySelector('[name="pin"]').value.trim();
+          prepareNotifications();
           const result = await api("/api/auth/login", { method: "POST", body: { role: S.loginRole, pin } });
           S.token = result.token;
           S.role = result.role;
@@ -834,25 +921,17 @@
 
         case "tab":
           S.tab = el.dataset.tab;
-          if (S.tab === "orders") {
-            const info = await api("/api/notifications");
-            S.notifications = info;
-            lastUnread = info.unread;
-            await api("/api/notifications/seen", { method: "POST" });
-            S.notifications.unread = 0;
-            updateBadgeDom();
+          if (S.tab === "orders" || S.tab === "mine") {
+            await markNotificationsSeen();
             S.orders = (await api("/api/orders")).orders;
           }
           render();
           break;
 
         case "bell":
-          S.tab = "orders";
-          el.dataset.tab = "orders";
-          S.notifications = await api("/api/notifications");
-          lastUnread = S.notifications.unread;
-          await api("/api/notifications/seen", { method: "POST" });
-          S.notifications.unread = 0;
+          S.tab = S.role === "husband" ? "orders" : "mine";
+          S.screen = "home";
+          await markNotificationsSeen();
           S.orders = (await api("/api/orders")).orders;
           render();
           break;
@@ -864,6 +943,41 @@
           render();
           break;
         }
+
+        case "import-excel":
+          openModal({
+            title: "استيراد من Excel",
+            body: `<div class="field"><label>ملف Excel أو CSV</label>
+                <input name="file" type="file" accept=".xlsx,.xlsm,.csv" required /></div>
+              <div class="field"><label>الطريقة</label>
+                <select name="mode">
+                  <option value="append">إضافة للقائمة الحالية</option>
+                  <option value="replace">استبدال القائمة بالكامل (يحذف الحالي)</option>
+                </select></div>
+              <div class="preview-box"><span class="hint">العمود الأول: اسم المجموعة، الثاني: اسم الصنف، والثالث اختياري للسعر. يمكن كتابة عناوين مثل «المجموعة» و«الصنف» في الصف الأول. الأعمدة الإضافية اختيارية للترتيب والرمز.</span></div>`,
+            confirmText: "استيراد",
+            onSubmit: async (formEl) => {
+              const data = new FormData(formEl);
+              const file = data.get("file");
+              if (!(file instanceof File) || !file.name) {
+                toast("اختر ملف Excel أولاً", "error");
+                return;
+              }
+              const fd = new FormData();
+              fd.append("file", file);
+              const mode = String(data.get("mode") || "append");
+              const result = await api(`/api/catalog/import?mode=${encodeURIComponent(mode)}`, {
+                method: "POST",
+                body: fd,
+              });
+              closeModal();
+              S.openGroups = new Set();
+              await refreshData();
+              render();
+              toast(`تم الاستيراد: ${result.groups_created} مجموعة و${result.items_created} صنفاً`, "success");
+            },
+          });
+          break;
 
         case "add-group":
           openModal({
@@ -1043,13 +1157,14 @@
 
         case "open-unread":
         case "open-order": {
-          const orderId = action === "open-unread" ? S.notifications.latest?.id : id;
+          const orderId = action === "open-unread"
+            ? (S.notifications.latest?.order_id || S.notifications.latest?.id)
+            : id;
           if (!orderId) break;
           S.order = await api(`/api/orders/${orderId}`);
           S.screen = "order";
           if (S.role === "husband" && S.order.status === "submitted") {
-            await api("/api/notifications/seen", { method: "POST" });
-            S.notifications.unread = 0;
+            await markNotificationsSeen();
           }
           render();
           break;
@@ -1129,11 +1244,12 @@
           const name = form.querySelector('input[name="name"]').value.trim();
           const quantity = Number(form.querySelector('input[name="qty"]').value) || 0;
           const price = Number(form.querySelector('input[name="price"]').value) || 0;
+          const note = (form.querySelector('input[name="note"]')?.value || "").trim().slice(0, 500);
           if (!name || quantity <= 0) {
             toast("اكتب اسم الصنف والكمية", "error");
             break;
           }
-          S.draft.rows.push({ key: uid(), item_id: null, name, quantity, price, is_custom: true });
+          S.draft.rows.push({ key: uid(), item_id: null, name, quantity, price, is_custom: true, note });
           saveDraft();
           S.customGroup = null;
           render();
@@ -1164,6 +1280,7 @@
             quantity: r.quantity,
             estimated_price: r.price,
             is_custom: r.is_custom,
+            note: r.note ? String(r.note).slice(0, 500) : null,
           }));
           await api(`/api/orders/${S.draft.id}/rows`, { method: "PUT", body: { rows } });
           await api(`/api/orders/${S.draft.id}/submit`, { method: "POST" });
@@ -1245,22 +1362,42 @@
   });
 
   app.addEventListener("input", (event) => {
-    const el = event.target.closest('[data-input="qty"]');
-    if (!el || !S.draft) return;
-    const key = el.dataset.key;
+    if (!S.draft) return;
+    const el = event.target;
+    if (el.dataset?.input === "note") {
+      const key = el.dataset.key;
+      let row = S.draft.rows.find((r) => r.key === key);
+      if (!row) {
+        row = {
+          key,
+          item_id: Number(el.dataset.item),
+          name: el.dataset.name,
+          price: Number(el.dataset.price),
+          quantity: 0,
+          is_custom: false,
+        };
+        S.draft.rows.push(row);
+      }
+      row.note = el.value.slice(0, 500);
+      saveDraft();
+      return;
+    }
+    const qtyEl = el.closest?.('[data-input="qty"]');
+    if (!qtyEl) return;
+    const key = qtyEl.dataset.key;
     let row = S.draft.rows.find((r) => r.key === key);
     if (!row) {
       row = {
         key,
-        item_id: Number(el.dataset.item),
-        name: el.dataset.name,
-        price: Number(el.dataset.price),
+        item_id: Number(qtyEl.dataset.item),
+        name: qtyEl.dataset.name,
+        price: Number(qtyEl.dataset.price),
         quantity: 0,
         is_custom: false,
       };
       S.draft.rows.push(row);
     }
-    setRowQuantity(key, el.value);
+    setRowQuantity(key, qtyEl.value);
   });
 
   document.addEventListener("submit", (event) => {
@@ -1270,7 +1407,7 @@
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && S.role === "husband") poll();
+    if (document.visibilityState === "visible" && (S.role === "husband" || S.role === "wife")) poll();
   });
 
   /* ---------------------- بدء التطبيق ---------------------- */
@@ -1281,6 +1418,7 @@
     }
     if (S.token) {
       try {
+        prepareNotifications();
         const me = await api("/api/me");
         S.role = me.role;
         await enterApp();

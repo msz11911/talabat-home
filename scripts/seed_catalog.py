@@ -78,43 +78,77 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: Any, max_width: int) -
     return lines
 
 
+THUMB_SIZE = 256
+THUMB_SCALE = 3  # render large, then downsample for clean anti-aliased edges
+
+
 def render_thumbnail(item: dict[str, Any]) -> bytes:
-    size = 160
+    """A crisp, white-background product thumbnail at 256x256.
+
+    The drawing is done at 3x resolution and reduced with LANCZOS so Arabic
+    text stays sharp on high-density phone screens.
+    """
+    size = THUMB_SIZE * THUMB_SCALE
     image = Image.new("RGB", (size, size), "white")
     draw = ImageDraw.Draw(image)
     color = GROUP_COLORS.get(item["group_code"], "#5B8CA8")
 
-    draw.rounded_rectangle((7, 7, size - 8, size - 8), radius=18, fill="white", outline="#E4E9EF", width=2)
-    draw.rounded_rectangle((20, 17, size - 21, 25), radius=4, fill=color)
-    draw.ellipse((size // 2 - 9, 36, size // 2 + 9, 54), fill=color)
+    # Card frame and group accent.
+    draw.rounded_rectangle(
+        (8 * THUMB_SCALE, 8 * THUMB_SCALE, size - 9 * THUMB_SCALE, size - 9 * THUMB_SCALE),
+        radius=20 * THUMB_SCALE,
+        fill="white",
+        outline="#DFE5EC",
+        width=2 * THUMB_SCALE,
+    )
+    draw.rounded_rectangle(
+        (34 * THUMB_SCALE, 20 * THUMB_SCALE, size - 35 * THUMB_SCALE, 30 * THUMB_SCALE),
+        radius=5 * THUMB_SCALE,
+        fill=color,
+    )
+    draw.ellipse(
+        (
+            size // 2 - 6 * THUMB_SCALE,
+            38 * THUMB_SCALE,
+            size // 2 + 6 * THUMB_SCALE,
+            50 * THUMB_SCALE,
+        ),
+        fill=color,
+    )
 
     name = item["name"]
     font = None
     lines: list[str] = []
-    for font_size in (20, 19, 18, 17, 16, 15, 14, 13, 12):
-        font = load_font(font_size, bold=True)
-        lines = wrap_text(draw, name, font, size - 28)
-        if len(lines) <= 3 and font_size * len(lines) <= 68:
+    for font_size in (34, 32, 30, 28, 26, 24, 22, 20, 18):
+        font = load_font(font_size * THUMB_SCALE, bold=True)
+        lines = wrap_text(draw, name, font, size - 44 * THUMB_SCALE)
+        if len(lines) <= 3 and font_size * len(lines) <= 112:
             break
     if len(lines) > 3:
         lines = lines[:3]
-        lines[-1] = lines[-1][:24].rstrip() + "…"
+        lines[-1] = lines[-1][:26].rstrip() + "…"
 
     assert font is not None
-    line_height = font.size + 3
-    y = 66 - (len(lines) - 1) * line_height // 2
+    line_height = font.size + 5 * THUMB_SCALE
+    y = 104 * THUMB_SCALE - (len(lines) - 1) * line_height // 2
     for line in lines:
         shown = display_text(line)
         bbox = draw.textbbox((0, 0), shown, font=font)
         x = (size - (bbox[2] - bbox[0])) // 2 - bbox[0]
-        draw.text((x, y), shown, fill="#1F2937", font=font)
+        draw.text((x, y), shown, fill="#17212E", font=font)
         y += line_height
 
-    code_font = load_font(11)
+    code_font = load_font(17 * THUMB_SCALE)
     code = item["key"].split("-fish")[0]
     bbox = draw.textbbox((0, 0), code, font=code_font)
-    draw.text(((size - bbox[2]) // 2, size - 27), code, fill="#8A94A3", font=code_font)
+    draw.text(
+        ((size - bbox[2]) // 2, size - 43 * THUMB_SCALE),
+        code,
+        fill="#8A94A3",
+        font=code_font,
+    )
 
+    image = image.resize((THUMB_SIZE, THUMB_SIZE), Image.Resampling.LANCZOS)
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return buffer.getvalue()

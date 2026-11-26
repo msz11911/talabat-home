@@ -48,23 +48,37 @@ try {
     $localProperties = Join-Path $androidDir "local.properties"
     "sdk.dir=$($sdk -replace '\\','/')" | Set-Content -Encoding ascii $localProperties
 
-    Write-Host "3/4 مزامنة ملفات الواجهة..."
-    npx cap sync android
+    # ملف APK للتحميل لا يجب أن يدخل أصول التطبيق وإلا يتضخم البناء كل مرة.
+    $webApk = Join-Path $root "web\TalabatHome.apk"
+    $stashedApk = Join-Path $distDir "TalabatHome.apk.stash"
+    $staleAssetApk = Join-Path $androidDir "app\src\main\assets\public\TalabatHome.apk"
+    $movedApk = $false
+    if (Test-Path $webApk) { Move-Item $webApk $stashedApk -Force; $movedApk = $true }
+    if (Test-Path $staleAssetApk) { Remove-Item $staleAssetApk -Force }
 
-    Write-Host "4/4 بناء الـ APK..."
-    Push-Location $androidDir
     try {
-        if ($Release) {
-            .\gradlew.bat assembleRelease
-            $source = Join-Path $androidDir "app\build\outputs\apk\release\app-release-unsigned.apk"
-            $target = Join-Path $distDir "TalabatHome-release-unsigned.apk"
-        } else {
-            .\gradlew.bat assembleDebug
-            $source = Join-Path $androidDir "app\build\outputs\apk\debug\app-debug.apk"
-            $target = Join-Path $distDir "TalabatHome-debug.apk"
+        Write-Host "3/4 مزامنة ملفات الواجهة..."
+        npx cap sync android
+
+        Write-Host "4/4 بناء الـ APK..."
+        Push-Location $androidDir
+        try {
+            if ($Release) {
+                .\gradlew.bat assembleRelease
+                $source = Join-Path $androidDir "app\build\outputs\apk\release\app-release-unsigned.apk"
+                $target = Join-Path $distDir "TalabatHome-release-unsigned.apk"
+            } else {
+                .\gradlew.bat assembleDebug
+                $source = Join-Path $androidDir "app\build\outputs\apk\debug\app-debug.apk"
+                $target = Join-Path $distDir "TalabatHome-debug.apk"
+            }
+        } finally {
+            Pop-Location
         }
     } finally {
-        Pop-Location
+        if ($movedApk -and (Test-Path $stashedApk)) {
+            Move-Item $stashedApk $webApk -Force
+        }
     }
 } finally {
     Pop-Location
@@ -72,6 +86,7 @@ try {
 
 if (-not (Test-Path $source)) { throw "لم يتم إنتاج ملف APK في: $source" }
 Copy-Item $source $target -Force
+Copy-Item $target (Join-Path $root "web\TalabatHome.apk") -Force
 Write-Host ""
 Write-Host "تم بنجاح ✅"
 Write-Host "الملف: $target"

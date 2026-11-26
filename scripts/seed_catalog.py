@@ -15,13 +15,14 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-from item_emoji import render_thumbnail as _render_picture_thumbnail
+from item_photos import render_thumbnail as _render_picture_thumbnail
 
 HERE = Path(__file__).resolve().parent
 CATALOG_PATH = HERE / "catalog_final.json"
@@ -112,19 +113,30 @@ def api(
     payload: dict[str, Any] | None = None,
     files: dict[str, Any] | None = None,
 ) -> Any:
-    response = requests.request(
-        method,
-        f"{base}{path}",
-        headers=headers,
-        json=payload,
-        files=files,
-        timeout=90,
-    )
-    if response.status_code >= 400:
-        raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text[:300]}")
-    if not response.content:
-        return None
-    return response.json()
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            response = requests.request(
+                method,
+                f"{base}{path}",
+                headers=headers,
+                json=payload,
+                files=files,
+                timeout=90,
+            )
+            if response.status_code >= 500:
+                raise RuntimeError(f"server error {response.status_code}")
+            if response.status_code >= 400:
+                raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text[:300]}")
+            if not response.content:
+                return None
+            return response.json()
+        except (requests.RequestException, RuntimeError) as exc:
+            last_error = exc
+            if "failed:" in str(exc) and "server error" not in str(exc):
+                raise
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"{method} {path} failed after retries: {last_error}")
 
 
 def main() -> int:

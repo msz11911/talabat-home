@@ -2586,6 +2586,33 @@
       "group_name": "علاج",
       "emoji": "💊",
       "sort_order": 47
+    },
+    {
+      "key": "102-123",
+      "code": "102-123",
+      "name": "شمام",
+      "group_code": "102",
+      "group_name": "فاكهة",
+      "emoji": "🍎",
+      "sort_order": 23
+    },
+    {
+      "key": "103-123",
+      "code": "103-123",
+      "name": "سلطة جبنة",
+      "group_code": "103",
+      "group_name": "أجبان",
+      "emoji": "🧀",
+      "sort_order": 23
+    },
+    {
+      "key": "103-124",
+      "code": "103-124",
+      "name": "دومتي",
+      "group_code": "103",
+      "group_name": "أجبان",
+      "emoji": "🧀",
+      "sort_order": 24
     }
   ]
 }

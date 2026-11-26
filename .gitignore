@@ -13,6 +13,9 @@ capacitor/android/app/build/
 capacitor/android/local.properties
 capacitor/android/.idea/
 
+# Thumbnail photo cache
+scripts/photo_cache/
+
 # Build output
 dist/
 *.apk

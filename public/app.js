@@ -268,7 +268,7 @@
 
   function defaultOpenGroups() {
     const first = S.catalog[0];
-    return first ? new Set([first.id, `d${first.id}`]) : new Set();
+    return first ? new Set([String(first.id), `d${first.id}`]) : new Set();
   }
 
   async function enterApp() {
@@ -575,12 +575,13 @@
 
   function catalogView() {
     const groups = S.catalog.map((group, index) => {
-      const open = S.openGroups.has(group.id);
+      const key = String(group.id);
+      const open = S.openGroups.has(key);
       const items = group.items.map((item, i) => `
         <div class="item-row">
           ${thumb({ ...item, emoji: group.emoji })}
           <div class="grow">
-            <div class="item-name elide">${esc(item.name)}</div>
+            <div class="item-name">${esc(item.name)}</div>
             <div class="item-price">السعر التقديري: ${money(item.price)}</div>
           </div>
           <div class="actions">
@@ -605,7 +606,7 @@
           <button class="icon-btn ok" data-action="add-item" data-id="${group.id}" title="إضافة صنف">＋</button>
           <button class="icon-btn" data-action="edit-group" data-id="${group.id}" title="تعديل">✏️</button>
           <button class="icon-btn danger" data-action="delete-group" data-id="${group.id}" title="حذف">🗑️</button>
-          <span class="chevron">▼</span>
+          <button type="button" class="chevron" data-action="toggle-group" data-id="${group.id}" title="فتح أو إغلاق المجموعة" aria-label="فتح أو إغلاق المجموعة">▼</button>
         </div>
         ${open ? `<div class="group-body">${items || `<p class="hint center">لا توجد أصناف بعد.</p>`}</div>
         <div class="group-foot"><button class="btn btn-ghost btn-sm btn-block" data-action="add-item" data-id="${group.id}">＋ إضافة صنف</button></div>` : ""}
@@ -616,6 +617,10 @@
       <main class="page">
         <button class="btn btn-primary btn-block" data-action="add-group">＋ إضافة مجموعة جديدة</button>
         <button class="btn btn-ghost btn-block" data-action="import-excel">📥 استيراد من Excel</button>
+        <div class="row" style="margin:8px 0">
+          <button class="btn btn-sm" data-action="open-all-groups" style="flex:1">▼ فتح كل المجموعات</button>
+          <button class="btn btn-sm" data-action="close-all-groups" style="flex:1">▲ إغلاق الكل</button>
+        </div>
         ${groups || `<div class="empty"><span class="emoji">🗂️</span>لا توجد مجموعات بعد</div>`}
       </main>`;
   }
@@ -765,7 +770,7 @@
         return `<div class="item-row">
           ${thumb({ ...item, emoji: group.emoji })}
           <div class="grow">
-            <div class="item-name elide">${esc(item.name)}</div>
+            <div class="item-name">${esc(item.name)}</div>
             <div class="item-price">السعر التقديري: ${money(item.price)}</div>
             <input type="text" class="note-input" data-input="note" data-key="${key}"
               data-item="${item.id}" data-name="${esc(item.name)}" data-price="${item.price}"
@@ -782,7 +787,7 @@
         <div class="group-head" data-action="toggle-group" data-id="d${group.id}">
           <span class="gemoji">${esc(group.emoji)}</span>
           <div class="grow"><div class="gname">${esc(group.name)}</div><div class="gcount">${itemCount(group.items.length)}</div></div>
-          <span class="chevron">▼</span>
+          <button type="button" class="chevron" data-action="toggle-group" data-id="d${group.id}" title="فتح أو إغلاق المجموعة" aria-label="فتح أو إغلاق المجموعة">▼</button>
         </div>
         ${open ? `<div class="group-body">${items || `<p class="hint center">لا توجد أصناف في هذه المجموعة.</p>`}</div>
           <div class="group-foot">
@@ -1017,12 +1022,22 @@
           break;
 
         case "toggle-group": {
-          const key = el.dataset.id;
+          const key = String(el.dataset.id);
           if (S.openGroups.has(key)) S.openGroups.delete(key);
           else S.openGroups.add(key);
           render();
           break;
         }
+
+        case "open-all-groups":
+          S.openGroups = new Set(S.catalog.map((group) => String(group.id)));
+          render();
+          break;
+
+        case "close-all-groups":
+          S.openGroups = new Set();
+          render();
+          break;
 
         case "import-excel":
           openModal({

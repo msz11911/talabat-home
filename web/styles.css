@@ -134,6 +134,8 @@ img { max-width: 100%; }
   width: 32px; height: 32px; display: grid; place-items: center; font-size: 14px; flex: none;
 }
 .icon-btn.danger { background: var(--danger-soft); color: var(--danger); }
+.icon-btn.ok { background: var(--ok-soft); color: var(--ok); }
+.back-btn { background: #fff; border: 1px solid var(--line); }
 
 .empty { text-align: center; padding: 34px 18px; color: var(--muted); }
 .empty .emoji { font-size: 40px; display: block; margin-bottom: 8px; }
@@ -194,20 +196,20 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 1; }
 .group-foot { display: flex; gap: 8px; padding: 8px 10px 12px; }
 
 .item-row {
-  display: flex; align-items: center; gap: 10px; padding: 8px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px;
   border-radius: 12px; background: #fafbfc;
 }
 .thumb {
-  width: 64px; height: 64px; flex: none; border-radius: 14px; background: #fff;
+  width: 72px; height: 72px; flex: none; border-radius: 14px; background: #fff;
   border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden;
 }
 .thumb img { width: 100%; height: 100%; object-fit: contain; padding: 2px; }
 .thumb .fallback { font-size: 32px; }
-.thumb.small { width: 50px; height: 50px; border-radius: 11px; }
+.thumb.small { width: 56px; height: 56px; border-radius: 11px; }
 .thumb.small .fallback { font-size: 24px; }
 .item-name { font-weight: 700; font-size: 14px; }
 .item-price { color: var(--muted); font-size: 12px; }
-.actions { display: flex; gap: 4px; flex: none; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex: none; }
 
 .qty {
   width: 66px; flex: none; text-align: center; font-weight: 800;

@@ -1,6 +1,6 @@
 /* Service Worker: يحفظ واجهة التطبيق للفتح السريع والعمل بدون اتصال.
    البيانات والصور تحتاج اتصالاً بالسيرفر. */
-const CACHE = "talabat-home-v8";
+const CACHE = "talabat-home-v9";
 const SHELL = [
   "./", "index.html", "styles.css", "config.js", "app.js",
   "manifest.webmanifest", "talabat_chime.wav",

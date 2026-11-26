@@ -26,7 +26,7 @@
     orders: [],
     notifications: { unread: 0, latest: null, items: [] },
     lastNotificationId: 0,
-    openGroups: new Set([1, "d1"]),
+    openGroups: new Set(),
     selectedOrders: new Set(),
     draft: null,
     order: null,
@@ -136,23 +136,32 @@
 
   const localNotifications = () => window.Capacitor?.Plugins?.LocalNotifications || null;
 
+  // Android never changes the sound of an existing channel. A fresh channel id
+  // guarantees the custom chime is used even if an older APK was installed first.
+  const NOTIFY_CHANNEL = "talabat_alerts_v2";
+  const OLD_NOTIFY_CHANNEL = "talabat_alerts";
+
   async function prepareNotifications() {
     const ln = localNotifications();
     if (ln) {
       try {
         let status = await ln.checkPermissions();
         if (status.display !== "granted") status = await ln.requestPermissions();
-        if (status.display === "granted") {
-          await ln.createChannel({
-            id: "talabat_alerts",
-            name: "تنبيهات Talabat Home",
-            description: "طلبات الشراء وتحديثات القائمة",
-            sound: "talabat_chime.wav",
-            importance: 4,
-            visibility: 1,
-            vibration: true,
-          });
+        if (status.display !== "granted") return;
+        try {
+          await ln.deleteChannel({ id: OLD_NOTIFY_CHANNEL });
+        } catch (_) {
+          /* القناة القديمة غير موجودة أو الهاتف لا يدعم الحذف */
         }
+        await ln.createChannel({
+          id: NOTIFY_CHANNEL,
+          name: "تنبيهات Talabat Home",
+          description: "طلبات الشراء وتحديثات القائمة بصوت مميز",
+          sound: "talabat_chime.wav",
+          importance: 4,
+          visibility: 1,
+          vibration: false,
+        });
       } catch (error) {
         console.warn("notification setup:", error);
       }
@@ -172,7 +181,10 @@
     if (ln) {
       try {
         const status = await ln.checkPermissions();
-        if (status.display !== "granted") return;
+        if (status.display !== "granted") {
+          await prepareNotifications();
+          return;
+        }
         await ln.schedule({
           notifications: [
             {
@@ -180,7 +192,7 @@
               title,
               body,
               sound: "talabat_chime.wav",
-              channelId: "talabat_alerts",
+              channelId: NOTIFY_CHANNEL,
               autoCancel: true,
               schedule: { at: new Date(Date.now() + 250) },
             },
@@ -254,12 +266,18 @@
     await Promise.allSettled(tasks);
   }
 
+  function defaultOpenGroups() {
+    const first = S.catalog[0];
+    return first ? new Set([first.id, `d${first.id}`]) : new Set();
+  }
+
   async function enterApp() {
     S.screen = "home";
     S.tab = S.role === "husband" ? "orders" : "new";
     S.order = null;
     S.report = null;
     await refreshData();
+    S.openGroups = defaultOpenGroups();
     if (S.role === "wife" && !S.draft) {
       const pending = S.orders.find((order) => order.status === "draft");
       if (pending) S.draft = loadDraft(pending.id);
@@ -282,6 +300,61 @@
     localStorage.removeItem("talabat_token");
     localStorage.removeItem("talabat_role");
     render();
+  }
+
+  async function goBack() {
+    if (S.modal) {
+      closeModal();
+      return;
+    }
+    if (S.screen === "review") {
+      S.screen = "home";
+      S.tab = "new";
+      render();
+      return;
+    }
+    if (S.screen === "success") {
+      S.screen = "home";
+      S.tab = "mine";
+      S.order = null;
+      S.orders = (await api("/api/orders")).orders;
+      render();
+      return;
+    }
+    S.screen = "home";
+    S.order = null;
+    S.report = null;
+    S.tab = S.role === "husband" ? "orders" : "mine";
+    await refreshData();
+    render();
+  }
+
+  async function prepareBackButton() {
+    const plugin = window.Capacitor?.Plugins?.App;
+    if (!plugin?.addListener) return;
+    try {
+      await plugin.addListener("backButton", async () => {
+        if (S.modal) {
+          closeModal();
+          return;
+        }
+        const atHome =
+          S.screen === "login" ||
+          (S.screen === "home" &&
+            S.tab === (S.role === "husband" ? "orders" : "mine"));
+        if (atHome) {
+          try {
+            await plugin.exitApp();
+          } catch (_) {
+            /* المتصفح لا يدعم إنهاء التطبيق */
+          }
+          return;
+        }
+        await goBack();
+      });
+    } catch (error) {
+      console.warn("back button setup:", error);
+    }
   }
 
   function startPolling() {
@@ -429,6 +502,7 @@
           </div>
         </div>
         <div class="top-actions">
+          ${S.screen !== "home" && S.screen !== "login" ? `<button class="icon-btn back-btn" data-action="go-back" title="رجوع" aria-label="رجوع">↩️</button>` : ""}
           <span class="role-chip">${S.role === "husband" ? "👨" : "👩"} ${ROLE_LABELS[S.role] || ""}</span>
           <button class="bell" data-action="bell" aria-label="الإشعارات">🔔
             <span class="badge" data-unread-badge ${unread ? "" : "hidden"}>${unread > 9 ? "9+" : unread}</span>
@@ -528,6 +602,7 @@
           </div>
           <button class="icon-btn" data-action="group-up" data-id="${group.id}" ${index === 0 ? "disabled" : ""} title="أعلى">↑</button>
           <button class="icon-btn" data-action="group-down" data-id="${group.id}" ${index === S.catalog.length - 1 ? "disabled" : ""} title="أسفل">↓</button>
+          <button class="icon-btn ok" data-action="add-item" data-id="${group.id}" title="إضافة صنف">＋</button>
           <button class="icon-btn" data-action="edit-group" data-id="${group.id}" title="تعديل">✏️</button>
           <button class="icon-btn danger" data-action="delete-group" data-id="${group.id}" title="حذف">🗑️</button>
           <span class="chevron">▼</span>
@@ -830,6 +905,11 @@
           </div>
           <button class="btn btn-primary btn-block" data-action="save-settings">💾 حفظ الرابط</button>
         </div>
+        <div class="card pad stack">
+          <h3 class="section-title">اختبار الإشعار والصوت</h3>
+          <p class="hint">اضغط الزر للتأكد من ظهور التنبيه وسماع جرس Talabat Home على الهاتف.</p>
+          <button class="btn btn-block" data-action="test-notification">🔔 إرسال إشعار تجريبي</button>
+        </div>
         ${S.role === "husband" ? `<div class="card pad stack">
           <h3 class="section-title">تغيير رموز الدخول</h3>
           <div class="field"><label>رمز محمد صلاح الحالي</label><input name="current_pin" type="password" inputmode="numeric" autocomplete="off" /></div>
@@ -879,7 +959,7 @@
 
   /* ---------------------- الأحداث ---------------------- */
 
-  app.addEventListener("click", async (event) => {
+  async function handleClick(event) {
     const el = event.target.closest("[data-action]");
     if (!el || el.disabled) return;
     const action = el.dataset.action;
@@ -971,8 +1051,8 @@
                 body: fd,
               });
               closeModal();
-              S.openGroups = new Set();
               await refreshData();
+              S.openGroups = defaultOpenGroups();
               render();
               toast(`تم الاستيراد: ${result.groups_created} مجموعة و${result.items_created} صنفاً`, "success");
             },
@@ -1345,6 +1425,16 @@
           logout();
           break;
 
+        case "go-back":
+          await goBack();
+          break;
+
+        case "test-notification":
+          await prepareNotifications();
+          await deviceNotify("🔔 اختبار الإشعار", "إذا سمعت الجرس وظهر التنبيه فالإشعارات تعمل بشكل صحيح.");
+          toast("تم إرسال الإشعار التجريبي", "success");
+          break;
+
         case "modal-close":
           closeModal();
           break;
@@ -1359,7 +1449,11 @@
     } catch (error) {
       console.error("Talabat action failed:", action, error);
     }
-  });
+  }
+
+  // modal-root sits outside #app, so both containers need the same delegation.
+  app.addEventListener("click", handleClick);
+  modalRoot.addEventListener("click", handleClick);
 
   app.addEventListener("input", (event) => {
     if (!S.draft) return;
@@ -1406,6 +1500,13 @@
     Promise.resolve(S.modal.onSubmit(event.target)).catch(() => {});
   });
 
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && S.modal) {
+      event.preventDefault();
+      closeModal();
+    }
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && (S.role === "husband" || S.role === "wife")) poll();
   });
@@ -1416,6 +1517,7 @@
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }
+    prepareBackButton();
     if (S.token) {
       try {
         prepareNotifications();

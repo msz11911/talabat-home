@@ -21,6 +21,8 @@ from typing import Any
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+from item_emoji import render_thumbnail as _render_picture_thumbnail
+
 HERE = Path(__file__).resolve().parent
 CATALOG_PATH = HERE / "catalog_final.json"
 DEFAULT_API_BASE = "https://talabat-home.vercel.app"
@@ -83,75 +85,8 @@ THUMB_SCALE = 3  # render large, then downsample for clean anti-aliased edges
 
 
 def render_thumbnail(item: dict[str, Any]) -> bytes:
-    """A crisp, white-background product thumbnail at 256x256.
-
-    The drawing is done at 3x resolution and reduced with LANCZOS so Arabic
-    text stays sharp on high-density phone screens.
-    """
-    size = THUMB_SIZE * THUMB_SCALE
-    image = Image.new("RGB", (size, size), "white")
-    draw = ImageDraw.Draw(image)
-    color = GROUP_COLORS.get(item["group_code"], "#5B8CA8")
-
-    # Card frame and group accent.
-    draw.rounded_rectangle(
-        (8 * THUMB_SCALE, 8 * THUMB_SCALE, size - 9 * THUMB_SCALE, size - 9 * THUMB_SCALE),
-        radius=20 * THUMB_SCALE,
-        fill="white",
-        outline="#DFE5EC",
-        width=2 * THUMB_SCALE,
-    )
-    draw.rounded_rectangle(
-        (34 * THUMB_SCALE, 20 * THUMB_SCALE, size - 35 * THUMB_SCALE, 30 * THUMB_SCALE),
-        radius=5 * THUMB_SCALE,
-        fill=color,
-    )
-    draw.ellipse(
-        (
-            size // 2 - 6 * THUMB_SCALE,
-            38 * THUMB_SCALE,
-            size // 2 + 6 * THUMB_SCALE,
-            50 * THUMB_SCALE,
-        ),
-        fill=color,
-    )
-
-    name = item["name"]
-    font = None
-    lines: list[str] = []
-    for font_size in (34, 32, 30, 28, 26, 24, 22, 20, 18):
-        font = load_font(font_size * THUMB_SCALE, bold=True)
-        lines = wrap_text(draw, name, font, size - 44 * THUMB_SCALE)
-        if len(lines) <= 3 and font_size * len(lines) <= 112:
-            break
-    if len(lines) > 3:
-        lines = lines[:3]
-        lines[-1] = lines[-1][:26].rstrip() + "…"
-
-    assert font is not None
-    line_height = font.size + 5 * THUMB_SCALE
-    y = 104 * THUMB_SCALE - (len(lines) - 1) * line_height // 2
-    for line in lines:
-        shown = display_text(line)
-        bbox = draw.textbbox((0, 0), shown, font=font)
-        x = (size - (bbox[2] - bbox[0])) // 2 - bbox[0]
-        draw.text((x, y), shown, fill="#17212E", font=font)
-        y += line_height
-
-    code_font = load_font(17 * THUMB_SCALE)
-    code = item["key"].split("-fish")[0]
-    bbox = draw.textbbox((0, 0), code, font=code_font)
-    draw.text(
-        ((size - bbox[2]) // 2, size - 43 * THUMB_SCALE),
-        code,
-        fill="#8A94A3",
-        font=code_font,
-    )
-
-    image = image.resize((THUMB_SIZE, THUMB_SIZE), Image.Resampling.LANCZOS)
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
-    return buffer.getvalue()
+    """A crisp 256x256 white-background *picture* for one catalog item."""
+    return _render_picture_thumbnail(item)
 
 
 def make_client(base: str) -> tuple[str, dict[str, str]]:

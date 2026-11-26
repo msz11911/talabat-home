@@ -60,11 +60,11 @@ cd server
 
 ### أ) Vercel — مجاني وبدون بطاقة (موصى به)
 
-السيرفر الحالي منشور على `https://talabat-home.vercel.app`. لإعادة النشر أو تعديله:
+السيرفر الحالي منشور على `https://talabat-home-haitham-walaa.vercel.app`. لإعادة النشر أو تعديله:
 
 1. افتح https://vercel.com/new وسجّل الدخول بـ GitHub.
-2. استورد مستودع `msz11911/talabat-home` (Framework: **Other**، Root Directory: `.`).
-3. أضف المتغيرات: `DATABASE_URL` (رابط Neon)، `APP_SECRET` (نص ثابت)، `HUSBAND_PIN`، `WIFE_PIN`، و`DATA_DIR=/tmp`.
+2. استورد مستودع `msz11911/talabat-home`، الفرع `couple2-haitham-walaa`، واضبط **Root Directory** على `couple2` (Framework: **Other**).
+3. أضف المتغيرات: `DATABASE_URL` (رابط Neon **جديد منفصل** عن النسخة الأصلية)، `APP_SECRET` (نص ثابت مختلف)، `HUSBAND_PIN=1111`، `WIFE_PIN=2222`، `HUSBAND_DISPLAY_NAME=هيثم سعد`، `WIFE_DISPLAY_NAME=ولاء صلاح`، و`DATA_DIR=/tmp`.
 4. اضغط **Deploy**. ملفات الواجهة مكرّرة في `public/` و`server/web/` ليتمكن FastAPI من تقديمها على Vercel.
 
 > ملاحظة: قاعدة البيانات على Neon، والجلسات موقّعة بـ `APP_SECRET` ثابت حتى لا تسقط عند إعادة النشر.
@@ -84,7 +84,7 @@ cd server
    https://اسمك.pythonanywhere.com/api/health
    ```
    يجب أن يظهر `{"ok":true,"app":"Talabat Home","version":"1.0.0"}`.
-5. الرمزان الافتراضيان: الزوج `1234` والزوجة `5678`. لتغييرهما عدّل `~/talabat-home/start.sh` ثم أعد تحميل الموقع:
+5. الرمزان الافتراضيان في هذه النسخة: الزوج هيثم `1111` والزوجة ولاء `2222`. لتغييرهما عدّل `~/talabat-home/start.sh` ثم أعد تحميل الموقع:
    ```bash
    pa website reload --domain اسمك.pythonanywhere.com
    ```
@@ -138,13 +138,13 @@ fly deploy
 2. قبل البناء، حدّد رابط السيرفر المنشور (يمكن تركه فارغاً وإدخاله لاحقاً من شاشة الدخول):
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -ApiBase "https://talabat-home.vercel.app"
+   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -ApiBase "https://talabat-home-haitham-walaa.vercel.app"
    ```
 
    يمكن أيضاً تعديل `web/config.js` مباشرة:
 
    ```js
-   window.TALABAT_API_BASE = "https://talabat-home.vercel.app";
+   window.TALABAT_API_BASE = "https://talabat-home-haitham-walaa.vercel.app";
    ```
 
 3. ابني الملف (الأمر في الخطوة 2 يبنيه مباشرة؛ وبدون `-ApiBase` شغّل):
@@ -154,8 +154,8 @@ fly deploy
    ```
 
    الناتج: `dist/TalabatHome-debug.apk`، ويُنسخ تلقائياً إلى `web/TalabatHome.apk` للتحميل.
-   **النسخة الجاهزة الحالية للهاتفين:**
-   [حمّل TalabatHome.apk](https://github.com/msz11911/talabat-home/raw/refs/heads/main/web/TalabatHome.apk)
+   **النسخة الجاهزة الحالية لهيثم وولاء:**
+   [حمّل TalabatHome.apk](https://github.com/msz11911/talabat-home/raw/refs/heads/couple2-haitham-walaa/couple2/web/TalabatHome.apk)
    (انسخ الرابط في Chrome على الهاتف؛ قد تحتاج تفعيل «تثبيت من مصادر غير معروفة»).
    قبل التثبيت احذف النسخة القديمة حتى تُفعّل قناة الإشعار بالصوت الجديد.
 

@@ -317,7 +317,7 @@
       updateBadgeDom();
 
       const listTab = S.role === "husband" ? "orders" : "mine";
-      if (S.tab === listTab || (S.role === "wife" && S.tab === "new")) {
+      if (S.tab === listTab) {
         S.orders = (await api("/api/orders")).orders;
         render();
       }

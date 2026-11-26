@@ -137,13 +137,13 @@ fly deploy
 2. قبل البناء، حدّد رابط السيرفر المنشور (يمكن تركه فارغاً وإدخاله لاحقاً من شاشة الدخول):
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -ApiBase "https://talabat-home.onrender.com"
+   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -ApiBase "https://talabat-home.vercel.app"
    ```
 
    يمكن أيضاً تعديل `web/config.js` مباشرة:
 
    ```js
-   window.TALABAT_API_BASE = "https://talabat-home.onrender.com";
+   window.TALABAT_API_BASE = "https://talabat-home.vercel.app";
    ```
 
 3. ابني الملف (الأمر في الخطوة 2 يبنيه مباشرة؛ وبدون `-ApiBase` شغّل):
@@ -152,7 +152,11 @@ fly deploy
    powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1
    ```
 
-   الناتج: `dist/TalabatHome-debug.apk`. انسخه للموبايل وثبّته (قد تحتاج تفعيل «تثبيت من مصادر غير معروفة»).
+   الناتج: `dist/TalabatHome-debug.apk`، ويُنسخ تلقائياً إلى `web/TalabatHome.apk` للتحميل.
+   **النسخة الجاهزة الحالية للهاتفين:**
+   [حمّل TalabatHome.apk](https://github.com/msz11911/talabat-home/raw/refs/heads/main/web/TalabatHome.apk)
+   (انسخ الرابط في Chrome على الهاتف؛ قد تحتاج تفعيل «تثبيت من مصادر غير معروفة»).
+   قبل التثبيت احذف النسخة القديمة حتى تُفعّل قناة الإشعار بالصوت الجديد.
 
 > لتحديث الواجهة لاحقاً بدون إعادة بناء الـ APK، انسخ محتوى `capacitor.config.remote.example.json`
 > إلى `capacitor.config.json` وبدّل الرابط، ثم أعد البناء مرة واحدة. بعدها سيحمّل التطبيق الواجهة من السيرفر دائماً.

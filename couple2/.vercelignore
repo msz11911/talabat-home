@@ -1,0 +1,17 @@
+.git
+.gitignore
+.vercel
+capacitor/
+dist/
+scripts/
+talabat-home/
+__pycache__/
+*.pyc
+*.apk
+server/data/
+server/.venv/
+node_modules/
+.gradle/
+build/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: talabat-home
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_SECRET
+        generateValue: true
+      - key: HUSBAND_PIN
+        sync: false
+      - key: WIFE_PIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false

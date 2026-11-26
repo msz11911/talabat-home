@@ -1,0 +1,23 @@
+# انسخ هذا الملف وغيّر اسم التطبيق (app) قبل النشر، ثم أنشئ التطبيق: fly apps create اسم-التطبيق
+app = "talabat-home"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  DATA_DIR = "/app/data"
+  # إذا أردت استخدام قاعدة خارجية بدل SQLite:
+  # DATABASE_URL = "postgresql://user:password@host/db"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "talabat_data"
+  destination = "/app/data"

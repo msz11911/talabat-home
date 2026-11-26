@@ -1,0 +1,15 @@
+{
+  "appId": "com.talabathome.app",
+  "appName": "Talabat Home",
+  "webDir": "../web",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#f57224",
+      "sound": "talabat_chime.wav"
+    }
+  }
+}

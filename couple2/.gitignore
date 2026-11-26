@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+server/.venv/
+server/data/
+server/.env
+
+# Node / Capacitor
+capacitor/node_modules/
+capacitor/android/.gradle/
+capacitor/android/build/
+capacitor/android/app/build/
+capacitor/android/local.properties
+capacitor/android/.idea/
+
+# Thumbnail photo cache
+scripts/photo_cache/
+
+# Build output
+dist/
+*.apk
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nested clone (created by GitHub Desktop)
+talabat-home/
